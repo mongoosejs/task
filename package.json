@@ -4,6 +4,9 @@
   "scripts": {
     "test": "mocha test/*.test.js"
   },
+  "engines": {
+    "node": ">= 14.0.0"
+  },
   "peerDependencies": {
     "mongoose": "^6.7.0"
   },
