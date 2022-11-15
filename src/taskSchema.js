@@ -47,9 +47,13 @@ taskSchema.methods.sideEffect = async function sideEffect(fn, params) {
 
 taskSchema.statics.startPolling = function startPolling() {
   let cancelled = false;
+  let timeout = null;
   if (!this._cancel) {
     doPoll.call(this);
-    this._cancel = () => { cancelled = true; };
+    this._cancel = () => {
+      cancelled = true;
+      clearTimeout(timeout)
+    };
   }
   return this._cancel;
 
@@ -59,15 +63,37 @@ taskSchema.statics.startPolling = function startPolling() {
     }
     this._currentPoll = this.poll();
     await this._currentPoll.then(
-      () => setTimeout(() => doPoll.call(this), 1000),
-      () => setTimeout(() => doPoll.call(this), 1000)
+      () => {
+        timeout = setTimeout(() => doPoll.call(this), 1000);
+      },
+      () => {
+        timeout = setTimeout(() => doPoll.call(this), 1000);
+      }
     );
   }
 };
 
-taskSchema.statics.registerHandler = async function(name, fn) {
+taskSchema.statics.registerHandler = async function registerHandler(name, fn) {
   this._handlers = this._handlers || new Map();
   this._handlers.set(name, fn);
+  return this;
+};
+
+taskSchema.statics.registerHandlers = async function registerHandlers(obj, prefix) {
+  this._handlers = this._handlers || new Map();
+  for (const key of Object.keys(obj)) {
+    const fullPath = prefix ? `${prefix}.${key}` : key;
+    if (typeof obj[key] === 'function') {
+      this._handlers.set(fullPath, obj[key]);
+    } else if (typeof obj[key] === 'object' && obj[key] != null) {
+      this.registerHandlers(obj[key], fullPath);
+    }
+  }
+  return this;
+};
+
+taskSchema.statics.removeAllHandlers = function removeAllHandlers() {
+  this._handlers = null;
   return this;
 };
 
