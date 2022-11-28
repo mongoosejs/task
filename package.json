@@ -5,6 +5,10 @@
   "scripts": {
     "test": "mocha test/*.test.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/mongoosejs/task.git"
+  },
   "engines": {
     "node": ">= 14.0.0"
   },
