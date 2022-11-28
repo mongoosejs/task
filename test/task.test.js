@@ -51,6 +51,39 @@ describe('Task', function() {
     assert.strictEqual(task.result, 42);
   });
 
+  it('handles repeatAfterMS', async function() {
+    let resolve;
+    let reject;
+    const p = new Promise((_resolve, _reject) => {
+      resolve = _resolve;
+      reject = _reject;
+    });
+    Task.registerHandler('getAnswer', (params, task) => {
+      resolve({ task, params });
+      return 42;
+    });
+
+    const now = new Date();
+    await Task.schedule('getAnswer', now, {
+      question: 'calculating...'
+    }, 5000);
+
+    await Task.poll();
+
+    const res = await p;
+    assert.deepEqual(res.params, { question: 'calculating...' });
+
+    const task = await Task.findById(res.task._id);
+    assert.ok(task);
+    assert.equal(task.status, 'succeeded');
+    assert.strictEqual(task.result, 42);
+
+    const futureTask = await Task.findOne({ originalTaskId: task._id, status: 'pending' });
+    assert.ok(futureTask);
+    assert.equal(futureTask.name, task.name);
+    assert.equal(futureTask.scheduledAt.toString(), new Date(now.valueOf() + 5000));
+  });
+
   it('lets you register a nested handler', async function() {
     let resolve;
     let reject;

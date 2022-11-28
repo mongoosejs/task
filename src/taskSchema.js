@@ -10,6 +10,15 @@ const taskSchema = new mongoose.Schema({
   scheduledAt: {
     type: Date
   },
+  repeatAfterMS: {
+    type: Number
+  },
+  previousTaskId: {
+    type: mongoose.ObjectId
+  },
+  originalTaskId: {
+    type: mongoose.ObjectId
+  },
   sideEffects: [{ start: Date, end: Date, name: String, params: 'Mixed', result: 'Mixed' }],
   logs: [{ timestamp: Date, message: String, extra: Object }],
   params: Object,
@@ -145,14 +154,26 @@ taskSchema.statics.execute = async function(task) {
     await task.save();
   }
 
+  if (task.repeatAfterMS != null) {
+    await this.create({
+      name: task.name,
+      scheduledAt: new Date(task.scheduledAt.valueOf() + task.repeatAfterMS),
+      repeatAfterMS: task.repeatAfterMS,
+      params: task.params,
+      previousTaskId: task._id,
+      originalTaskId: task.originalTaskId || task._id
+    });
+  }
+
   return task;
 };
 
-taskSchema.statics.schedule = async function schedule(name, scheduledAt, params) {
+taskSchema.statics.schedule = async function schedule(name, scheduledAt, params, repeatAfterMS) {
   return this.create({
     name,
     scheduledAt,
-    params
+    params,
+    repeatAfterMS
   });
 };
 

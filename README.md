@@ -21,3 +21,40 @@ Task.startPolling();
 // Will print 'Hello, World!' after approximately 1 second
 await Task.schedule('sayHello', new Date(Date.now() + 1000));
 ```
+
+## Params
+
+The 2nd param to `Task.schedule()` is an object that this framework will call the handler function with.
+
+```javascript
+Task.registerHandler('sayHello', function sayHello(params) {
+  console.log(`Hello, ${params.name}!`);
+});
+
+// Will print 'Hello, Friend!' after approximately 1 second
+await Task.schedule(
+  'sayHello',
+  new Date(Date.now() + 1000),
+  { name: 'Friend' }
+);
+```
+
+## Repeating Tasks
+
+The 3rd param to `Task.schedule()` is called `repeatAfterMS`.
+If `repeatAfterMS` is set, this framework will immediately reschedule the task to run after `repeatAfterMS` once the original task is done.
+
+```javascript
+Task.registerHandler('sayHello', function sayHello(params) {
+  console.log(`Hello, ${params.name}!`);
+});
+
+// Will print 'Hello, Friend!' every 5 seconds, after a 1 second
+// initial delay
+await Task.schedule(
+  'sayHello',
+  new Date(Date.now() + 1000),
+  { name: 'Friend' },
+  5000
+);
+```
