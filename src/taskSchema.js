@@ -1,6 +1,7 @@
 'use strict';
 
 const mongoose = require('mongoose');
+const time = require('./time');
 
 const taskSchema = new mongoose.Schema({
   name: {
@@ -37,24 +38,25 @@ const taskSchema = new mongoose.Schema({
 taskSchema.index({ status: 1, scheduledAt: 1 });
 
 taskSchema.methods.log = function log(message, extra) {
-  this.logs.push({ timestamp: new Date(), message, extra });
+  this.logs.push({ timestamp: time.now(), message, extra });
   return this.save();
 };
 
 taskSchema.methods.sideEffect = async function sideEffect(fn, params) {
-  this.sideEffects.push({ timestamp: new Date(), name: fn.name, params });
+  this.sideEffects.push({ timestamp: time.now(), name: fn.name, params });
   const sideEffect = this.sideEffects[this.sideEffects.length - 1];
   await this.save();
   const result = await fn(params);
 
-  sideEffect.end = new Date();
+  sideEffect.end = time.now();
   sideEffect.result = result;
   await this.save();
 
   return result;
 };
 
-taskSchema.statics.startPolling = function startPolling() {
+taskSchema.statics.startPolling = function startPolling(options) {
+  const interval = options?.interval ?? 1000;
   let cancelled = false;
   let timeout = null;
   if (!this._cancel) {
@@ -73,10 +75,11 @@ taskSchema.statics.startPolling = function startPolling() {
     this._currentPoll = this.poll();
     await this._currentPoll.then(
       () => {
-        timeout = setTimeout(() => doPoll.call(this), 1000);
+        timeout = setTimeout(() => doPoll.call(this), interval);
       },
-      () => {
-        timeout = setTimeout(() => doPoll.call(this), 1000);
+      (err) => {
+        console.log(err);
+        timeout = setTimeout(() => doPoll.call(this), interval);
       }
     );
   }
@@ -113,7 +116,7 @@ taskSchema.statics.poll = async function poll(opts) {
     let tasksInProgress = [];
     for (let i = 0; i < parallel; ++i) {
       const task = await this.findOneAndUpdate(
-        { status: 'pending', scheduledAt: { $lte: new Date() } },
+        { status: 'pending', scheduledAt: { $lte: time.now() } },
         { status: 'in_progress' },
         { new: false }
       );
@@ -157,7 +160,7 @@ taskSchema.statics.execute = async function(task) {
   if (task.repeatAfterMS != null) {
     await this.create({
       name: task.name,
-      scheduledAt: new Date(task.scheduledAt.valueOf() + task.repeatAfterMS),
+      scheduledAt: new Date(task.scheduledAt + task.repeatAfterMS),
       repeatAfterMS: task.repeatAfterMS,
       params: task.params,
       previousTaskId: task._id,

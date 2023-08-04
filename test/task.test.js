@@ -3,9 +3,12 @@
 const Task = require('../src')();
 const assert = require('assert');
 const mongoose = require('mongoose');
+const sinon = require('sinon');
+const time = require('../src/time');
 
 describe('Task', function() {
   let cancel = null;
+  const now = new Date('2023-06-01');
 
   before(async function() {
     await mongoose.connect('mongodb://localhost:27017/task_test');
@@ -14,6 +17,14 @@ describe('Task', function() {
 
   after(async function() {
     await mongoose.disconnect();
+  });
+
+  beforeEach(() => {
+    sinon.stub(time, 'now').callsFake(() => new Date(now));
+  });
+
+  afterEach(() => {
+    sinon.restore();
   });
 
   afterEach(() => {
@@ -36,7 +47,7 @@ describe('Task', function() {
       return 42;
     });
 
-    await Task.schedule('getAnswer', new Date(), {
+    await Task.schedule('getAnswer', time.now(), {
       question: 'calculating...'
     });
 
@@ -63,7 +74,7 @@ describe('Task', function() {
       return 42;
     });
 
-    const now = new Date();
+    const now = time.now();
     await Task.schedule('getAnswer', now, {
       question: 'calculating...'
     }, 5000);
@@ -101,7 +112,7 @@ describe('Task', function() {
     }
     Task.registerHandlers(obj);
 
-    await Task.schedule('nested.getPowerLevel', new Date(), {
+    await Task.schedule('nested.getPowerLevel', time.now(), {
       question: 'what does the scouter say about his power level?'
     });
 
@@ -128,12 +139,15 @@ describe('Task', function() {
       return 42;
     });
 
-    await Task.schedule('getAnswer', new Date(Date.now() + 100), {
+    await Task.schedule('getAnswer', new Date(time.now().valueOf() + 100), {
       question: 'calculating...'
     });
 
-    cancel = await Task.startPolling();
+    cancel = Task.startPolling({ interval: 100 });
     assert.strictEqual(called, 0);
+
+    sinon.restore();
+    sinon.stub(time, 'now').callsFake(() => new Date(now.valueOf() + 1000));
 
     const res = await p;
     assert.strictEqual(called, 1);
