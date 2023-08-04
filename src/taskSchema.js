@@ -160,7 +160,7 @@ taskSchema.statics.execute = async function(task) {
   if (task.repeatAfterMS != null) {
     await this.create({
       name: task.name,
-      scheduledAt: new Date(task.scheduledAt + task.repeatAfterMS),
+      scheduledAt: new Date(task.scheduledAt.valueOf() + task.repeatAfterMS),
       repeatAfterMS: task.repeatAfterMS,
       params: task.params,
       previousTaskId: task._id,
