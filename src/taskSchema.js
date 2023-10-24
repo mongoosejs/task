@@ -142,15 +142,15 @@ taskSchema.statics.execute = async function(task) {
   if (!this._handlers.has(task.name)) {
     return null;
   }
-
-  const [result, error] = await Promise.
-    resolve(this._handlers.get(task.name).call(task, task.params, task)).
-    then(result => [result, null], error => [null, error]);
-  if (error == null) {
+  
+  try {
+    const result = await Promise.resolve(
+      this._handlers.get(task.name).call(task, task.params, task)
+    );
     task.status = 'succeeded';
     task.result = result;
     await task.save();
-  } else {
+  } catch (err) {
     task.status = 'failed';
     task.error.message = error.message;
     task.error.stack = error.stack;
