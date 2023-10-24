@@ -13,7 +13,7 @@
     "node": ">= 14.0.0"
   },
   "peerDependencies": {
-    "mongoose": "^6.7.0 || 7.x || 8.0.0-rc0"
+    "mongoose": "^6.7.0 || 7.x || 8.0.0-rc0 || 8.x"
   },
   "devDependencies": {
     "mocha": "10.1.0",
