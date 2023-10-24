@@ -26,7 +26,7 @@ const taskSchema = new mongoose.Schema({
   status: {
     type: String,
     default: 'pending',
-    enum: ['pending', 'in_progress', 'succeeded', 'failed']
+    enum: ['pending', 'in_progress', 'succeeded', 'failed', 'cancelled']
   },
   result: 'Mixed',
   error: {
