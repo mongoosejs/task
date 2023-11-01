@@ -150,7 +150,7 @@ taskSchema.statics.execute = async function(task) {
     task.status = 'succeeded';
     task.result = result;
     await task.save();
-  } catch (err) {
+  } catch (error) {
     task.status = 'failed';
     task.error.message = error.message;
     task.error.stack = error.stack;

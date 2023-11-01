@@ -160,4 +160,26 @@ describe('Task', function() {
     assert.equal(task.status, 'succeeded');
     assert.strictEqual(task.result, 42);
   });
+
+  it('catches errors in task', async function() {
+    let resolve;
+    let reject;
+    const p = new Promise((_resolve, _reject) => {
+      resolve = _resolve;
+      reject = _reject;
+    });
+    Task.registerHandler('getQuestion', async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      throw new Error('Sample error message');
+    });
+
+    let task = await Task.schedule('getQuestion', time.now().valueOf() + 100000);
+
+    task = await Task.execute(task);
+
+    task = await Task.findById(task._id);
+    assert.ok(task);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.error.message, 'Sample error message');
+  });
 });
