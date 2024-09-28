@@ -178,7 +178,7 @@ describe('Task', function() {
       question: 'calculating...'
     });
 
-    cancel = Task.startPolling({ interval: 100 });
+    cancel = Task.startPolling({ interval: 100, workerName: 'taco' });
     assert.strictEqual(called, 0);
 
     sinon.restore();
@@ -193,6 +193,7 @@ describe('Task', function() {
     const task = await Task.findById(res.task._id);
     assert.ok(task);
     assert.equal(task.status, 'succeeded');
+    assert.equal(task.workerName, 'taco');
     assert.strictEqual(task.result, 42);
   });
 

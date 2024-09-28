@@ -35,6 +35,9 @@ const taskSchema = new mongoose.Schema({
   error: {
     message: String,
     stack: String
+  },
+  workerName: {
+    type: String
   }
 }, { timestamps: true });
 
@@ -60,6 +63,8 @@ taskSchema.methods.sideEffect = async function sideEffect(fn, params) {
 
 taskSchema.statics.startPolling = function startPolling(options) {
   const interval = options?.interval ?? 1000;
+  const workerName = options?.workerName;
+  const pollOptions = workerName ? { workerName } : null;
   let cancelled = false;
   let timeout = null;
   if (!this._cancel) {
@@ -75,7 +80,7 @@ taskSchema.statics.startPolling = function startPolling(options) {
     if (cancelled) {
       return;
     }
-    this._currentPoll = this.poll();
+    this._currentPoll = this.poll(pollOptions);
     await this._currentPoll.then(
       () => {
         timeout = setTimeout(() => doPoll.call(this), interval);
@@ -114,13 +119,16 @@ taskSchema.statics.removeAllHandlers = function removeAllHandlers() {
 
 taskSchema.statics.poll = async function poll(opts) {
   const parallel = (opts && opts.parallel) || 1;
+  const workerName = opts?.workerName;
+
+  const additionalParams = workerName ? { workerName } : {};
 
   while (true) {
     let tasksInProgress = [];
     for (let i = 0; i < parallel; ++i) {
       const task = await this.findOneAndUpdate(
         { status: 'pending', scheduledAt: { $lte: time.now() } },
-        { status: 'in_progress' },
+        { status: 'in_progress', ...additionalParams },
         { new: false }
       );
 
