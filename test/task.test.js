@@ -95,6 +95,41 @@ describe('Task', function() {
     assert.equal(futureTask.scheduledAt.toString(), new Date(now.valueOf() + 5000));
   });
 
+  it('handles nextScheduledAt', async function() {
+    let resolve;
+    let reject;
+    const p = new Promise((_resolve, _reject) => {
+      resolve = _resolve;
+      reject = _reject;
+    });
+    const now = time.now();
+    const nextScheduledAt = new Date(now.valueOf() + 1000000);
+    Task.registerHandler('getAnswer', (params, task) => {
+      resolve({ task, params });
+      task.nextScheduledAt = nextScheduledAt;
+      return 42;
+    });
+
+    await Task.schedule('getAnswer', now, {
+      question: 'calculating...'
+    });
+
+    await Task.poll();
+
+    const res = await p;
+    assert.deepEqual(res.params, { question: 'calculating...' });
+
+    const task = await Task.findById(res.task._id);
+    assert.ok(task);
+    assert.equal(task.status, 'succeeded');
+    assert.strictEqual(task.result, 42);
+
+    const futureTask = await Task.findOne({ originalTaskId: task._id, status: 'pending' });
+    assert.ok(futureTask);
+    assert.equal(futureTask.name, task.name);
+    assert.equal(futureTask.scheduledAt.toString(), nextScheduledAt.toString());
+  });
+
   it('lets you register a nested handler', async function() {
     let resolve;
     let reject;

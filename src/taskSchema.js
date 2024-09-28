@@ -11,6 +11,9 @@ const taskSchema = new mongoose.Schema({
   scheduledAt: {
     type: Date
   },
+  nextScheduledAt: {
+    type: Date
+  },
   repeatAfterMS: {
     type: Number
   },
@@ -157,7 +160,16 @@ taskSchema.statics.execute = async function(task) {
     await task.save();
   }
 
-  if (task.repeatAfterMS != null) {
+  if (task.nextScheduledAt != null) {
+    await this.create({
+      name: task.name,
+      scheduledAt: new Date(task.nextScheduledAt),
+      repeatAfterMS: task.repeatAfterMS,
+      params: task.params,
+      previousTaskId: task._id,
+      originalTaskId: task.originalTaskId || task._id
+    });
+  } else if (task.repeatAfterMS != null) {
     await this.create({
       name: task.name,
       scheduledAt: new Date(task.scheduledAt.valueOf() + task.repeatAfterMS),
