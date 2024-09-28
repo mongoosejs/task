@@ -1,5 +1,4 @@
 import { Model, Connection } from 'mongoose';
-import taskSchema from './taskSchema';
 
 interface Options {
   // The model name for the task model. Defaults to "Task"
@@ -11,4 +10,4 @@ interface Options {
 export default function createTaskModel(
   opts?: Options,
   conn?: Connection
-): Model<typeof taskSchema>;
+): Model<unknown>;
