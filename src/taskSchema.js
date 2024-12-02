@@ -17,6 +17,9 @@ const taskSchema = new mongoose.Schema({
   repeatAfterMS: {
     type: Number
   },
+  timeoutMS: {
+    type: Number
+  },
   previousTaskId: {
     type: mongoose.ObjectId
   },
@@ -155,9 +158,21 @@ taskSchema.statics.execute = async function(task) {
   }
   
   try {
-    const result = await Promise.resolve(
-      this._handlers.get(task.name).call(task, task.params, task)
-    );
+    let result = null;
+    if (typeof task.timeoutMS === 'number') {
+      result = await Promise.race([
+        Promise.resolve(
+          this._handlers.get(task.name).call(task, task.params, task)
+        ),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`Task timed out after ${task.timeoutMS} ms`)), task.timeoutMS);
+        })
+      ]);
+    } else {
+      result = await Promise.resolve(
+        this._handlers.get(task.name).call(task, task.params, task)
+      );
+    }
     task.status = 'succeeded';
     task.result = result;
     await task.save();
@@ -191,12 +206,19 @@ taskSchema.statics.execute = async function(task) {
   return task;
 };
 
-taskSchema.statics.schedule = async function schedule(name, scheduledAt, params, repeatAfterMS) {
+taskSchema.statics.schedule = async function schedule(name, scheduledAt, params, optionsOrRepeat) {
+  let repeatAfterMS = null;
+  let options = optionsOrRepeat;
+  if (typeof optionsOrRepeat === 'number') {
+    repeatAfterMS = optionsOrRepeat;
+    options = {};
+  }
   return this.create({
     name,
     scheduledAt,
     params,
-    repeatAfterMS
+    repeatAfterMS,
+    ...options
   });
 };
 

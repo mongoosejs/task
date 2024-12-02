@@ -218,4 +218,25 @@ describe('Task', function() {
     assert.equal(task.status, 'failed');
     assert.equal(task.error.message, 'Sample error message');
   });
+
+  it('handles task timeouts', async function() {
+    let resolve;
+    let reject;
+    const p = new Promise((_resolve, _reject) => {
+      resolve = _resolve;
+      reject = _reject;
+    });
+    Task.registerHandler('getQuestion', async () => {
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    });
+
+    let task = await Task.schedule('getQuestion', time.now().valueOf() + 100000, null, { timeoutMS: 50 });
+
+    task = await Task.execute(task);
+
+    task = await Task.findById(task._id);
+    assert.ok(task);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.error.message, 'Task timed out after 50 ms');
+  });
 });
