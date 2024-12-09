@@ -190,7 +190,8 @@ taskSchema.statics.execute = async function(task) {
       repeatAfterMS: task.repeatAfterMS,
       params: task.params,
       previousTaskId: task._id,
-      originalTaskId: task.originalTaskId || task._id
+      originalTaskId: task.originalTaskId || task._id,
+      timeoutMS: task.timeoutMS
     });
   } else if (task.repeatAfterMS != null) {
     await this.create({
@@ -199,7 +200,8 @@ taskSchema.statics.execute = async function(task) {
       repeatAfterMS: task.repeatAfterMS,
       params: task.params,
       previousTaskId: task._id,
-      originalTaskId: task.originalTaskId || task._id
+      originalTaskId: task.originalTaskId || task._id,
+      timeoutMS: task.timeoutMS
     });
   }
 
