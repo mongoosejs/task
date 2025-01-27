@@ -34,7 +34,7 @@ describe('Task', function() {
     }
     Task.removeAllHandlers();
   });
-  
+
   it('lets you register a new task', async function() {
     let resolve;
     let reject;
@@ -217,6 +217,7 @@ describe('Task', function() {
     assert.ok(task);
     assert.equal(task.status, 'failed');
     assert.equal(task.error.message, 'Sample error message');
+    assert.equal(task.finishedRunningAt.valueOf(), now.valueOf());
   });
 
   it('handles task timeouts', async function() {
@@ -238,5 +239,6 @@ describe('Task', function() {
     assert.ok(task);
     assert.equal(task.status, 'failed');
     assert.equal(task.error.message, 'Task timed out after 50 ms');
+    assert.equal(task.finishedRunningAt.valueOf(), now.valueOf());
   });
 });

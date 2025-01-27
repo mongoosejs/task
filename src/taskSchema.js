@@ -9,7 +9,8 @@ const taskSchema = new mongoose.Schema({
     required: true
   },
   scheduledAt: {
-    type: Date
+    type: Date,
+    required: true
   },
   nextScheduledAt: {
     type: Date
@@ -19,6 +20,15 @@ const taskSchema = new mongoose.Schema({
   },
   timeoutMS: {
     type: Number
+  },
+  cancelledAt: {
+    type: Date
+  },
+  startedRunningAt: {
+    type: Date
+  },
+  finishedRunningAt: {
+    type: Date
   },
   previousTaskId: {
     type: mongoose.ObjectId
@@ -49,6 +59,14 @@ taskSchema.index({ status: 1, scheduledAt: 1 });
 taskSchema.methods.log = function log(message, extra) {
   this.logs.push({ timestamp: time.now(), message, extra });
   return this.save();
+};
+
+taskSchema.statics.cancelTask = async function cancelTask(filter) {
+  if (filter != null) {
+    filter = { $and: [{ status: 'pending' }, filter] }
+  };
+  const task = await this.findOneAndUpdate(filter, { status: 'cancelled', cancelledAt: new Date() }, { returnDocument: 'after' });
+  return task;
 };
 
 taskSchema.methods.sideEffect = async function sideEffect(fn, params) {
@@ -129,9 +147,10 @@ taskSchema.statics.poll = async function poll(opts) {
   while (true) {
     let tasksInProgress = [];
     for (let i = 0; i < parallel; ++i) {
+      const now = time.now();
       const task = await this.findOneAndUpdate(
-        { status: 'pending', scheduledAt: { $lte: time.now() } },
-        { status: 'in_progress', ...additionalParams },
+        { status: 'pending', scheduledAt: { $lte: now } },
+        { status: 'in_progress', startedRunningAt: now, ...additionalParams },
         { new: false }
       );
 
@@ -140,14 +159,14 @@ taskSchema.statics.poll = async function poll(opts) {
       }
 
       task.status = 'in_progress';
-    
+
       tasksInProgress.push(this.execute(task));
     }
 
     if (tasksInProgress.length === 0) {
       break;
     }
-    
+
     await Promise.all(tasksInProgress);
   }
 };
@@ -156,7 +175,7 @@ taskSchema.statics.execute = async function(task) {
   if (!this._handlers.has(task.name)) {
     return null;
   }
-  
+
   try {
     let result = null;
     if (typeof task.timeoutMS === 'number') {
@@ -174,12 +193,14 @@ taskSchema.statics.execute = async function(task) {
       );
     }
     task.status = 'succeeded';
+    task.finishedRunningAt = time.now();
     task.result = result;
     await task.save();
   } catch (error) {
     task.status = 'failed';
     task.error.message = error.message;
     task.error.stack = error.stack;
+    task.finishedRunningAt = time.now();
     await task.save();
   }
 
