@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         node: [16, 18, 20]
-        os: [ubuntu-20.04],
+        os: [ubuntu-20.04]
         mongo: [5.0.2]
     name: Node ${{ matrix.node }} MongoDB ${{ matrix.mongo }}
     steps:
