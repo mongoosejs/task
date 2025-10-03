@@ -195,6 +195,8 @@ describe('Task', function() {
     assert.equal(task.status, 'succeeded');
     assert.equal(task.workerName, 'taco');
     assert.strictEqual(task.result, 42);
+
+    cancel();
   });
 
   it('catches errors in task', async function() {
@@ -240,5 +242,156 @@ describe('Task', function() {
     assert.equal(task.status, 'failed');
     assert.equal(task.error.message, 'Task timed out after 50 ms');
     assert.equal(task.finishedRunningAt.valueOf(), now.valueOf());
+  });
+
+  it('expires timed out tasks and handles repeats', async function() {
+    Task.registerHandler('timedOutJob', async () => {
+      // handler intentionally does nothing (we'll simulate a timeout)
+    });
+
+    // Simulate a task that was started but "timed out" previously
+    const scheduledAt = time.now();
+    const startedRunningAt = new Date(scheduledAt.valueOf() - 20000);
+    const timeoutMS = 10000; // 10s timeout
+    const timeoutAt = new Date(startedRunningAt.valueOf() + timeoutMS);
+
+    let timedOutTask = await Task.create({
+      name: 'timedOutJob',
+      scheduledAt,
+      startedRunningAt,
+      timeoutAt,
+      status: 'in_progress',
+      timeoutMS,
+      params: { foo: 'bar' }
+    });
+
+    // Now simulate time after timeoutAt
+    sinon.restore();
+    sinon.stub(time, 'now').callsFake(() =>
+      // now after the timeoutAt
+      new Date(timeoutAt.valueOf() + 1000)
+    );
+
+    // Directly call expireTimedOutTasks instead of polling
+    await Task.expireTimedOutTasks();
+
+    // Reload the task and check its status
+    timedOutTask = await Task.findById(timedOutTask._id);
+    assert.ok(timedOutTask, 'Still found timed out task');
+    assert.equal(timedOutTask.status, 'timed_out');
+    assert.ok(timedOutTask.finishedRunningAt.valueOf() >= timeoutAt.valueOf());
+
+    // If repeating, should have queued repeat (not in this test)
+    const repeatTask = await Task.findOne({ previousTaskId: timedOutTask._id });
+    assert.ok(!repeatTask, 'No repeat should exist for non-repeating task');
+
+    // Now try with repeatAfterMS to verify repeat scheduled
+    const repeatTaskObj = await Task.create({
+      name: 'timedOutJob',
+      scheduledAt,
+      startedRunningAt,
+      timeoutAt,
+      status: 'in_progress',
+      repeatAfterMS: 60000,
+      timeoutMS,
+      params: { foo: 'baz' }
+    });
+
+    // We should advance the fake clock further to catch this one too
+    sinon.restore();
+    sinon.stub(time, 'now').callsFake(() =>
+      new Date(timeoutAt.valueOf() + 2000)
+    );
+
+    await Task.expireTimedOutTasks();
+
+    const afterRepeat = await Task.findById(repeatTaskObj._id);
+    assert.equal(afterRepeat.status, 'timed_out');
+
+    // The repeat should exist and be pending
+    const repeated = await Task.findOne({ previousTaskId: repeatTaskObj._id, status: 'pending' });
+    assert.ok(repeated, 'A repeat should be created for timed out repeating task');
+    assert.equal(repeated.name, 'timedOutJob');
+    assert.deepEqual(repeated.params, { foo: 'baz' });
+    assert.ok(repeated.scheduledAt.valueOf() === repeatTaskObj.scheduledAt.valueOf() + 60000);
+  });
+
+  it('handles scheduling_timed_out tasks and schedules next repeat if needed', async function() {
+    Task.registerHandler('delayedJob', async () => {
+      // Will not be executed due to scheduling_timed_out logic
+      return 'should not be run';
+    });
+
+    // Arrange: schedule a task whose schedulingTimeoutAt is in the past
+    const scheduledAt = time.now();
+    const schedulingTimeoutAt = new Date(scheduledAt.valueOf() - 1000); // already "expired"
+    let task = await Task.create({
+      name: 'delayedJob',
+      scheduledAt,
+      schedulingTimeoutAt,
+      status: 'pending',
+      params: { foo: 'qux' }
+    });
+
+    // Should move to scheduling_timed_out when execute is called
+    task = await Task.execute(task);
+
+    assert.ok(task);
+    assert.equal(task.status, 'scheduling_timed_out');
+    assert.ok(task.finishedRunningAt.valueOf() >= schedulingTimeoutAt.valueOf());
+
+    // Should NOT have side effected and not produced result
+    assert.strictEqual(task.result, undefined);
+
+    // No repeat should exist for non-repeating task
+    const repeated = await Task.findOne({ previousTaskId: task._id });
+    assert.ok(!repeated, 'No repeat created for non-repeating scheduling_timed_out');
+
+    // Now try with repeatAfterMS to verify repeat scheduled
+    const scheduledAt2 = time.now();
+    const schedulingTimeoutAt2 = new Date(scheduledAt2.valueOf() - 2000);
+    const repeatAfterMS = 60000;
+
+    let repeatTaskInput = await Task.create({
+      name: 'delayedJob',
+      scheduledAt: scheduledAt2,
+      schedulingTimeoutAt: schedulingTimeoutAt2,
+      status: 'pending',
+      params: { bar: 'baz' },
+      repeatAfterMS
+    });
+
+    let repeatTask = await Task.execute(repeatTaskInput);
+
+    assert.ok(repeatTask);
+    assert.equal(repeatTask.status, 'scheduling_timed_out');
+
+    // The repeat should exist and be pending
+    const scheduledRepeat = await Task.findOne({ previousTaskId: repeatTask._id, status: 'pending' });
+    assert.ok(scheduledRepeat, 'A repeat should be created for scheduling_timed_out repeating task');
+    assert.equal(scheduledRepeat.name, 'delayedJob');
+    assert.deepEqual(scheduledRepeat.params, { bar: 'baz' });
+    assert.ok(scheduledRepeat.scheduledAt.valueOf() === repeatTask.scheduledAt.valueOf() + repeatAfterMS);
+
+    // Also works with nextScheduledAt
+    const now = time.now();
+    const nextScheduledAt = new Date(now.valueOf() + 100000);
+    let taskWithNext = await Task.create({
+      name: 'delayedJob',
+      scheduledAt: now,
+      schedulingTimeoutAt: new Date(now.valueOf() - 5000),
+      status: 'pending',
+      params: { blah: 'blah' },
+      nextScheduledAt
+    });
+
+    let resultTaskWithNext = await Task.execute(taskWithNext);
+    assert.equal(resultTaskWithNext.status, 'scheduling_timed_out');
+
+    // Next repeat should be at nextScheduledAt
+    const foundNext = await Task.findOne({ previousTaskId: resultTaskWithNext._id, status: 'pending' });
+    assert.ok(foundNext, 'Should make repeat with nextScheduledAt');
+    assert.equal(foundNext.scheduledAt.toString(), nextScheduledAt.toString());
+    assert.deepEqual(foundNext.params, { blah: 'blah' });
   });
 });
