@@ -13,7 +13,7 @@ const taskSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
-  // If the task has not started running by this time, it will be marked as `scheduling_time_out`
+  // If the task has not started running by this time, it will be marked as `scheduling_timed_out`
   // and the next scheduled task will be created.
   schedulingTimeoutAt: {
     type: Date
