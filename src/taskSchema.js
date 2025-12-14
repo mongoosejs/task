@@ -38,6 +38,10 @@ const taskSchema = new mongoose.Schema({
   finishedRunningAt: {
     type: Date
   },
+  retryOnTimeoutCount: {
+    type: Number,
+    default: 0
+  },
   // If this task is still running after this time, it will be marked as `timed_out`.
   timeoutAt: {
     type: Date
@@ -155,7 +159,6 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks() {
     const task = await Task.findOneAndUpdate(
       {
         status: 'in_progress',
-        startedRunningAt: { $exists: true },
         timeoutAt: { $exists: true, $lte: now }
       },
       {
@@ -171,7 +174,15 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks() {
       break;
     }
 
-    await _handleRepeatingTask(Task, task);
+    if (task.retryOnTimeoutCount > 0) {
+      await Task.create({
+        ...task.toObject({ virtuals: false }),
+        status: 'pending',
+        schedulingTimeoutAt: now.valueOf() + 10 * 60 * 1000
+      });
+    } else {
+      await _handleRepeatingTask(Task, task);
+    }
   }
 };
 
@@ -241,6 +252,7 @@ taskSchema.statics.poll = async function poll(opts) {
         { status: 'pending', scheduledAt: { $lte: now } },
         {
           status: 'in_progress',
+          startedRunningAt: now,
           timeoutAt: new Date(now.valueOf() + 10 * 60 * 1000), // 10 minutes from startedRunningAt
           ...additionalParams
         },
