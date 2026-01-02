@@ -175,9 +175,19 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks() {
     }
 
     if (task.retryOnTimeoutCount > 0) {
+      // Copy task data but remove _id so MongoDB generates a new one
+      const taskData = task.toObject({ virtuals: false });
+      delete taskData._id;
       await Task.create({
-        ...task.toObject({ virtuals: false }),
+        ...taskData,
         status: 'pending',
+        retryOnTimeoutCount: task.retryOnTimeoutCount - 1,
+        startedRunningAt: null,
+        finishedRunningAt: null,
+        workerName: null,
+        error: null,
+        result: null,
+        timeoutAt: null,
         schedulingTimeoutAt: now.valueOf() + 10 * 60 * 1000
       });
     } else {
