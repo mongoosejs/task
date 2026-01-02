@@ -316,6 +316,52 @@ describe('Task', function() {
     assert.ok(repeated.scheduledAt.valueOf() === repeatTaskObj.scheduledAt.valueOf() + 60000);
   });
 
+  it('creates a retry task when a timed out task has retryOnTimeoutCount', async function() {
+    Task.registerHandler('timeoutRetry', async () => {
+      // handler intentionally does nothing (we'll simulate a timeout)
+    });
+
+    const scheduledAt = new Date(now.valueOf() - 5000);
+    const startedRunningAt = new Date(now.valueOf() - 20000);
+    const timeoutAt = new Date(now.valueOf() - 1000);
+
+    let timedOutTask = await Task.create({
+      name: 'timeoutRetry',
+      scheduledAt,
+      startedRunningAt,
+      timeoutAt,
+      status: 'in_progress',
+      timeoutMS: 10000,
+      retryOnTimeoutCount: 2,
+      params: { foo: 'bar' }
+    });
+
+    await Task.expireTimedOutTasks();
+
+    timedOutTask = await Task.findById(timedOutTask._id);
+    assert.ok(timedOutTask);
+    assert.equal(timedOutTask.status, 'timed_out');
+    assert.equal(timedOutTask.finishedRunningAt.valueOf(), now.valueOf());
+
+    const retryTask = await Task.findOne({
+      name: 'timeoutRetry',
+      status: 'pending',
+      retryOnTimeoutCount: 1
+    });
+    assert.ok(retryTask, 'Retry task should be created');
+    assert.equal(retryTask.scheduledAt.valueOf(), scheduledAt.valueOf());
+    assert.strictEqual(retryTask.startedRunningAt, null);
+    assert.strictEqual(retryTask.finishedRunningAt, null);
+    assert.strictEqual(retryTask.workerName, null);
+    assert.strictEqual(retryTask.timeoutAt, null);
+    assert.strictEqual(retryTask.error, null);
+    assert.strictEqual(retryTask.result, null);
+    assert.equal(
+      retryTask.schedulingTimeoutAt.valueOf(),
+      now.valueOf() + 10 * 60 * 1000
+    );
+  });
+
   it('handles scheduling_timed_out tasks and schedules next repeat if needed', async function() {
     Task.registerHandler('delayedJob', async () => {
       // Will not be executed due to scheduling_timed_out logic
