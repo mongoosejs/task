@@ -354,7 +354,8 @@ describe('Task', function() {
     assert.strictEqual(retryTask.finishedRunningAt, null);
     assert.strictEqual(retryTask.workerName, null);
     assert.strictEqual(retryTask.timeoutAt, null);
-    assert.strictEqual(retryTask.error, null);
+    assert.deepStrictEqual(retryTask.toObject().params, { foo: 'bar' });
+    assert.ok(retryTask.error.$isEmpty());
     assert.strictEqual(retryTask.result, null);
     assert.equal(
       retryTask.schedulingTimeoutAt.valueOf(),
