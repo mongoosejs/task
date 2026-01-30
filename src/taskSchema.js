@@ -132,6 +132,7 @@ taskSchema.statics.startPolling = function startPolling(options) {
     this._cancel = () => {
       cancelled = true;
       clearTimeout(timeout);
+      this._cancel = null;
     };
   }
   return this._cancel;
