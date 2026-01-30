@@ -6,6 +6,16 @@ const mongoose = require('mongoose');
 const sinon = require('sinon');
 const time = require('../src/time');
 
+const waitFor = async (predicate, timeoutMS = 1000) => {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMS) {
+      throw new Error('Timed out waiting for condition');
+    }
+    await new Promise(resolve => setImmediate(resolve));
+  }
+};
+
 describe('Task', function() {
   let cancel = null;
   const now = new Date('2023-06-01');
@@ -197,6 +207,52 @@ describe('Task', function() {
     assert.strictEqual(task.result, 42);
 
     cancel();
+  });
+
+  it('passes parallel option to startPolling()', async function() {
+    const pollStub = sinon.stub(Task, 'poll').callsFake(async () => {});
+
+    cancel = Task.startPolling({ interval: 100, parallel: 2 });
+
+    await Task._currentPoll;
+
+    assert.ok(pollStub.calledWithMatch({ parallel: 2 }));
+
+    cancel();
+    pollStub.restore();
+  });
+
+  it('honors maxParallelTasks per handler', async function() {
+    const pendingResolves = [];
+    let concurrent = 0;
+    let maxConcurrent = 0;
+
+    Task.registerHandler('limitedTask', async () => {
+      concurrent += 1;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      await new Promise(resolve => pendingResolves.push(resolve));
+      concurrent -= 1;
+      return 'done';
+    }, { maxParallelTasks: 1 });
+
+    await Task.schedule('limitedTask', time.now(), {});
+    await Task.schedule('limitedTask', time.now(), {});
+
+    const pollPromise = Task.poll({ parallel: 2 });
+
+    await waitFor(() => pendingResolves.length === 1);
+    assert.strictEqual(maxConcurrent, 1);
+
+    pendingResolves.shift()();
+
+    await waitFor(() => pendingResolves.length === 1);
+    assert.strictEqual(maxConcurrent, 1);
+
+    pendingResolves.shift()();
+
+    await pollPromise;
+
+    assert.strictEqual(maxConcurrent, 1);
   });
 
   it('catches errors in task', async function() {
