@@ -22,6 +22,21 @@ Task.startPolling();
 await Task.schedule('sayHello', new Date(Date.now() + 1000));
 ```
 
+## Parallelism
+
+You can control worker-level concurrency with `startPolling({ parallel })`. To limit how many
+instances of a specific task can run concurrently on a worker, pass `maxParallelTasks` when
+registering the handler.
+
+```javascript
+Task.registerHandler('sendEmail', async function sendEmail(params) {
+  // ...
+}, { maxParallelTasks: 2 });
+
+// Allow up to 4 tasks to run in parallel on this worker
+Task.startPolling({ parallel: 4 });
+```
+
 ## Params
 
 The 2nd param to `Task.schedule()` is an object that this framework will call the handler function with.
