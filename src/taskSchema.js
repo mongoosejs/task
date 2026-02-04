@@ -116,14 +116,20 @@ taskSchema.methods.sideEffect = async function sideEffect(fn, params) {
 taskSchema.statics.startPolling = function startPolling(options) {
   const interval = options?.interval ?? 1000;
   const workerName = options?.workerName;
-  const pollOptions = workerName ? { workerName } : null;
+  const getCurrentTime = options?.getCurrentTime;
+  const pollOptions = {
+    ...(workerName ? { workerName } : {}),
+    ...(getCurrentTime ? { getCurrentTime } : {})
+  };
   let cancelled = false;
   let timeout = null;
+  const Task = this;
   if (!this._cancel) {
     doPoll.call(this);
     this._cancel = () => {
       cancelled = true;
       clearTimeout(timeout);
+      Task._cancel = null;
     };
   }
   return this._cancel;
@@ -136,7 +142,7 @@ taskSchema.statics.startPolling = function startPolling(options) {
     const Task = this;
 
     // Expire tasks that have timed out (refactored to separate function)
-    await Task.expireTimedOutTasks();
+    await Task.expireTimedOutTasks({ getCurrentTime });
 
     this._currentPoll = this.poll(pollOptions);
     await this._currentPoll.then(
@@ -152,8 +158,9 @@ taskSchema.statics.startPolling = function startPolling(options) {
 };
 
 // Refactor logic for expiring timed out tasks here
-taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks() {
-  const now = time.now();
+taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks(options = {}) {
+  const getCurrentTime = options.getCurrentTime;
+  const now = typeof getCurrentTime === 'function' ? getCurrentTime() : time.now();
   const Task = this;
   while (true) {
     const task = await Task.findOneAndUpdate(
@@ -251,13 +258,14 @@ taskSchema.statics.removeAllHandlers = function removeAllHandlers() {
 taskSchema.statics.poll = async function poll(opts) {
   const parallel = (opts && opts.parallel) || 1;
   const workerName = opts?.workerName;
+  const getCurrentTime = opts?.getCurrentTime;
 
   const additionalParams = workerName ? { workerName } : {};
 
   while (true) {
     const tasksInProgress = [];
     for (let i = 0; i < parallel; ++i) {
-      const now = time.now();
+      const now = typeof getCurrentTime === 'function' ? getCurrentTime() : time.now();
       const task = await this.findOneAndUpdate(
         { status: 'pending', scheduledAt: { $lte: now } },
         {

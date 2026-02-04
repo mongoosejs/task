@@ -199,6 +199,37 @@ describe('Task', function() {
     cancel();
   });
 
+  it('allows startPolling() to use getCurrentTime()', async function() {
+    let resolve;
+    const p = new Promise((_resolve) => {
+      resolve = _resolve;
+    });
+    Task.registerHandler('getAnswer', (params, task) => {
+      resolve({ task, params });
+      return 42;
+    });
+
+    await Task.schedule('getAnswer', new Date(time.now().valueOf() + 1000), {
+      question: 'calculating...'
+    });
+
+    const getCurrentTime = sinon.stub().callsFake(() => new Date(now.valueOf() + 2000));
+    cancel = Task.startPolling({ interval: 100, getCurrentTime });
+
+    const res = await p;
+    assert.ok(getCurrentTime.called);
+    assert.deepEqual(res.params, { question: 'calculating...' });
+
+    await Task._currentPoll;
+
+    const task = await Task.findById(res.task._id);
+    assert.ok(task);
+    assert.equal(task.status, 'succeeded');
+    assert.strictEqual(task.result, 42);
+
+    cancel();
+  });
+
   it('catches errors in task', async function() {
     let resolve;
     let reject;
