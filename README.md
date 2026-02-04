@@ -22,6 +22,21 @@ Task.startPolling();
 await Task.schedule('sayHello', new Date(Date.now() + 1000));
 ```
 
+## Polling Options
+
+You can pass `getCurrentTime()` to `startPolling()` to supply a custom clock for polling,
+which is useful for demos or tests that advance time automatically.
+
+```javascript
+let currentTime = new Date('2023-06-01T00:00:00.000Z');
+
+Task.startPolling({
+  getCurrentTime: () => new Date(currentTime)
+});
+
+currentTime = new Date(currentTime.valueOf() + 60_000);
+```
+
 ## Params
 
 The 2nd param to `Task.schedule()` is an object that this framework will call the handler function with.
