@@ -123,11 +123,13 @@ taskSchema.statics.startPolling = function startPolling(options) {
   };
   let cancelled = false;
   let timeout = null;
+  const Task = this;
   if (!this._cancel) {
     doPoll.call(this);
     this._cancel = () => {
       cancelled = true;
       clearTimeout(timeout);
+      Task._cancel = null;
     };
   }
   return this._cancel;
