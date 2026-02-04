@@ -1,6 +1,6 @@
 {
   "name": "@mongoosejs/task",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": false,
   "scripts": {
     "lint": "eslint .",
@@ -14,13 +14,13 @@
     "node": ">= 14.0.0"
   },
   "peerDependencies": {
-    "mongoose": "^6.7.0 || 7.x || 8.x || ^9.0.0-0"
+    "mongoose": "^6.7.0 || 7.x || 8.x || 9.x"
   },
   "devDependencies": {
     "@masteringjs/eslint-config": "0.1.1",
     "eslint": "9.30.0",
     "mocha": "10.1.0",
-    "mongoose": "^9.0.0-0",
+    "mongoose": "9.x",
     "sinon": "15.2.0"
   }
 }
