@@ -281,7 +281,7 @@ taskSchema.statics.poll = async function poll(opts) {
         break;
       }
 
-      tasksInProgress.push(this.execute(task));
+      tasksInProgress.push(this.execute(task, { getCurrentTime }));
     }
 
     if (tasksInProgress.length === 0) {
@@ -292,13 +292,16 @@ taskSchema.statics.poll = async function poll(opts) {
   }
 };
 
-taskSchema.statics.execute = async function(task) {
+taskSchema.statics.execute = async function(task, options = {}) {
   if (!this._handlers.has(task.name)) {
     return null;
   }
 
+  const getCurrentTime = options.getCurrentTime;
+  const currentTime = () => (typeof getCurrentTime === 'function' ? getCurrentTime() : time.now());
+
   task.status = 'in_progress';
-  const now = time.now();
+  const now = currentTime();
   task.startedRunningAt = now;
 
   if (task.schedulingTimeoutAt && task.schedulingTimeoutAt < now) {
@@ -326,14 +329,14 @@ taskSchema.statics.execute = async function(task) {
       );
     }
     task.status = 'succeeded';
-    task.finishedRunningAt = time.now();
+    task.finishedRunningAt = currentTime();
     task.result = result;
     await task.save();
   } catch (error) {
     task.status = 'failed';
     task.error.message = error.message;
     task.error.stack = error.stack;
-    task.finishedRunningAt = time.now();
+    task.finishedRunningAt = currentTime();
     await task.save();
   }
 
