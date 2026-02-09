@@ -472,4 +472,25 @@ describe('Task', function() {
     assert.equal(foundNext.scheduledAt.toString(), nextScheduledAt.toString());
     assert.deepEqual(foundNext.params, { blah: 'blah' });
   });
+
+  it('uses getCurrentTime() in execute() when checking scheduling timeouts', async function() {
+    Task.registerHandler('delayedJob', async () => 'should not be run');
+
+    const baseTime = time.now();
+    const schedulingTimeoutAt = new Date(baseTime.valueOf() + 1000);
+    let task = await Task.create({
+      name: 'delayedJob',
+      scheduledAt: baseTime,
+      schedulingTimeoutAt,
+      status: 'pending',
+      params: { foo: 'bar' }
+    });
+
+    const getCurrentTime = sinon.stub().returns(new Date(baseTime.valueOf() + 2000));
+    task = await Task.execute(task, { getCurrentTime });
+
+    assert.ok(getCurrentTime.called);
+    assert.equal(task.status, 'scheduling_timed_out');
+    assert.equal(task.finishedRunningAt.valueOf(), baseTime.valueOf() + 2000);
+  });
 });
