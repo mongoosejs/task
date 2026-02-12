@@ -174,7 +174,7 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks(opti
           finishedRunningAt: now
         }
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!task) {
@@ -274,7 +274,7 @@ taskSchema.statics.poll = async function poll(opts) {
           timeoutAt: new Date(now.valueOf() + 10 * 60 * 1000), // 10 minutes from startedRunningAt
           ...additionalParams
         },
-        { new: false }
+        { returnDocument: 'after' }
       );
 
       if (task == null || task.status !== 'pending') {
