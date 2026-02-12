@@ -19,8 +19,8 @@
   "devDependencies": {
     "@masteringjs/eslint-config": "0.1.1",
     "eslint": "9.30.0",
-    "mocha": "10.1.0",
+    "mocha": "11.x",
     "mongoose": "9.x",
-    "sinon": "15.2.0"
+    "sinon": "16.x"
   }
 }
