@@ -96,7 +96,11 @@ taskSchema.statics.cancelTask = async function cancelTask(filter) {
   if (filter != null) {
     filter = { $and: [{ status: 'pending' }, filter] };
   }
-  const task = await this.findOneAndUpdate(filter, { status: 'cancelled', cancelledAt: new Date() }, { returnDocument: 'after' });
+  const task = await this.findOneAndUpdate(
+    filter,
+    { status: 'cancelled', cancelledAt: new Date() },
+    { returnDocument: 'before' }
+  );
   return task;
 };
 
@@ -174,7 +178,7 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks(opti
           finishedRunningAt: now
         }
       },
-      { new: true }
+      { returnDocument: 'before' }
     );
 
     if (!task) {
@@ -281,7 +285,7 @@ taskSchema.statics.poll = async function poll(opts) {
           timeoutAt: new Date(now.valueOf() + 10 * 60 * 1000), // 10 minutes from startedRunningAt
           ...additionalParams
         },
-        { new: false }
+        { returnDocument: 'before' }
       );
 
       if (task == null || task.status !== 'pending') {
@@ -322,14 +326,15 @@ taskSchema.statics.execute = async function(task, options = {}) {
   try {
     let result = null;
     if (typeof task.timeoutMS === 'number') {
+      let timeoutId;
       result = await Promise.race([
         Promise.resolve(
           this._handlers.get(task.name).call(task, task.params, task)
         ),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`Task timed out after ${task.timeoutMS} ms`)), task.timeoutMS);
+          timeoutId = setTimeout(() => reject(new Error(`Task timed out after ${task.timeoutMS} ms`)), task.timeoutMS);
         })
-      ]);
+      ]).finally(() => clearTimeout(timeoutId));
     } else {
       result = await Promise.resolve(
         this._handlers.get(task.name).call(task, task.params, task)
