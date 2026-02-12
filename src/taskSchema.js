@@ -96,7 +96,11 @@ taskSchema.statics.cancelTask = async function cancelTask(filter) {
   if (filter != null) {
     filter = { $and: [{ status: 'pending' }, filter] };
   }
-  const task = await this.findOneAndUpdate(filter, { status: 'cancelled', cancelledAt: new Date() }, { returnDocument: 'after' });
+  const task = await this.findOneAndUpdate(
+    filter,
+    { status: 'cancelled', cancelledAt: new Date() },
+    { returnDocument: 'before' }
+  );
   return task;
 };
 
@@ -174,7 +178,7 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks(opti
           finishedRunningAt: now
         }
       },
-      { returnDocument: 'after' }
+      { returnDocument: 'before' }
     );
 
     if (!task) {
@@ -274,7 +278,7 @@ taskSchema.statics.poll = async function poll(opts) {
           timeoutAt: new Date(now.valueOf() + 10 * 60 * 1000), // 10 minutes from startedRunningAt
           ...additionalParams
         },
-        { returnDocument: 'after' }
+        { returnDocument: 'before' }
       );
 
       if (task == null || task.status !== 'pending') {
