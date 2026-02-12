@@ -259,6 +259,8 @@ taskSchema.statics.poll = async function poll(opts) {
   const parallel = (opts && opts.parallel) || 1;
   const workerName = opts?.workerName;
   const getCurrentTime = opts?.getCurrentTime;
+  const handlers = this._handlers || new Map();
+  const registeredHandlerNames = Array.from(handlers.keys());
 
   const additionalParams = workerName ? { workerName } : {};
 
@@ -266,8 +268,13 @@ taskSchema.statics.poll = async function poll(opts) {
     const tasksInProgress = [];
     for (let i = 0; i < parallel; ++i) {
       const now = typeof getCurrentTime === 'function' ? getCurrentTime() : time.now();
+      const filter = {
+        status: 'pending',
+        scheduledAt: { $lte: now },
+        name: { $in: registeredHandlerNames }
+      };
       const task = await this.findOneAndUpdate(
-        { status: 'pending', scheduledAt: { $lte: now } },
+        filter,
         {
           status: 'in_progress',
           startedRunningAt: now,
@@ -293,7 +300,7 @@ taskSchema.statics.poll = async function poll(opts) {
 };
 
 taskSchema.statics.execute = async function(task, options = {}) {
-  if (!this._handlers.has(task.name)) {
+  if (!this._handlers || !this._handlers.has(task.name)) {
     return null;
   }
 

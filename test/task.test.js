@@ -199,6 +199,34 @@ describe('Task', function() {
     cancel();
   });
 
+
+  it('poll() filters by handler names', async function() {
+    let called = 0;
+    Task.registerHandler('handledJob', async () => {
+      ++called;
+      return 'ok';
+    });
+
+    await Task.schedule('unhandledJob', time.now(), { skip: true });
+    const handledTask = await Task.schedule('handledJob', time.now(), { run: true });
+
+    await Task.poll();
+
+    const reloadedHandledTask = await Task.findById(handledTask._id);
+    assert.ok(reloadedHandledTask);
+    assert.equal(reloadedHandledTask.status, 'succeeded');
+    assert.equal(called, 1);
+
+    const unhandledTask = await Task.findOne({ name: 'unhandledJob' });
+    assert.ok(unhandledTask);
+    assert.equal(unhandledTask.status, 'pending');
+    assert.strictEqual(unhandledTask.startedRunningAt, null);
+    assert.strictEqual(unhandledTask.timeoutAt, null);
+    assert.strictEqual(unhandledTask.workerName, null);
+  });
+
+
+
   it('allows startPolling() to use getCurrentTime()', async function() {
     let resolve;
     const p = new Promise((_resolve) => {
