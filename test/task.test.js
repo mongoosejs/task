@@ -260,8 +260,9 @@ describe('Task', function() {
       resolve = _resolve;
       reject = _reject;
     });
+    let handlerTimeout;
     Task.registerHandler('getQuestion', async () => {
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      await new Promise(resolve => { handlerTimeout = setTimeout(resolve, 10000); });
     });
 
     let task = await Task.schedule('getQuestion', time.now().valueOf() + 100000, null, { timeoutMS: 50 });
@@ -273,6 +274,7 @@ describe('Task', function() {
     assert.equal(task.status, 'failed');
     assert.equal(task.error.message, 'Task timed out after 50 ms');
     assert.equal(task.finishedRunningAt.valueOf(), now.valueOf());
+    clearTimeout(handlerTimeout);
   });
 
   it('expires timed out tasks and handles repeats', async function() {

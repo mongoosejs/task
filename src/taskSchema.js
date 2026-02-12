@@ -319,14 +319,15 @@ taskSchema.statics.execute = async function(task, options = {}) {
   try {
     let result = null;
     if (typeof task.timeoutMS === 'number') {
+      let timeoutId;
       result = await Promise.race([
         Promise.resolve(
           this._handlers.get(task.name).call(task, task.params, task)
         ),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`Task timed out after ${task.timeoutMS} ms`)), task.timeoutMS);
+          timeoutId = setTimeout(() => reject(new Error(`Task timed out after ${task.timeoutMS} ms`)), task.timeoutMS);
         })
-      ]);
+      ]).finally(() => clearTimeout(timeoutId));
     } else {
       result = await Promise.resolve(
         this._handlers.get(task.name).call(task, task.params, task)
