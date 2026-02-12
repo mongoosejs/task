@@ -220,9 +220,9 @@ describe('Task', function() {
     const unhandledTask = await Task.findOne({ name: 'unhandledJob' });
     assert.ok(unhandledTask);
     assert.equal(unhandledTask.status, 'pending');
-    assert.strictEqual(unhandledTask.startedRunningAt, null);
-    assert.strictEqual(unhandledTask.timeoutAt, null);
-    assert.strictEqual(unhandledTask.workerName, null);
+    assert.strictEqual(unhandledTask.startedRunningAt, undefined);
+    assert.strictEqual(unhandledTask.timeoutAt, undefined);
+    assert.strictEqual(unhandledTask.workerName, undefined);
   });
 
 
