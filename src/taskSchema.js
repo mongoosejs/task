@@ -121,9 +121,11 @@ taskSchema.statics.startPolling = function startPolling(options) {
   const interval = options?.interval ?? 1000;
   const workerName = options?.workerName;
   const getCurrentTime = options?.getCurrentTime;
+  const parallel = options?.parallel;
   const pollOptions = {
     ...(workerName ? { workerName } : {}),
-    ...(getCurrentTime ? { getCurrentTime } : {})
+    ...(getCurrentTime ? { getCurrentTime } : {}),
+    ...(parallel != null ? { parallel } : {})
   };
   let cancelled = false;
   let timeout = null;
