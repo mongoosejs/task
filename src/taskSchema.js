@@ -122,6 +122,9 @@ taskSchema.statics.startPolling = function startPolling(options) {
   const workerName = options?.workerName;
   const getCurrentTime = options?.getCurrentTime;
   const parallel = options?.parallel;
+  if (parallel != null && (typeof parallel !== 'number' || parallel <= 0)) {
+    throw new Error('Invalid parallel option, must be a positive number');
+  }
   const pollOptions = {
     ...(workerName ? { workerName } : {}),
     ...(getCurrentTime ? { getCurrentTime } : {}),
