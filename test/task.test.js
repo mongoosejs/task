@@ -299,7 +299,7 @@ describe('Task', function() {
 
     task = await Task.findById(task._id);
     assert.ok(task);
-    assert.equal(task.status, 'failed');
+    assert.equal(task.status, 'timed_out');
     assert.equal(task.error.message, 'Task timed out after 50 ms');
     assert.equal(task.finishedRunningAt.valueOf(), now.valueOf());
     clearTimeout(handlerTimeout);
@@ -329,8 +329,8 @@ describe('Task', function() {
     // Now simulate time after timeoutAt
     sinon.restore();
     sinon.stub(time, 'now').callsFake(() =>
-      // now after the timeoutAt
-      new Date(timeoutAt.valueOf() + 1000)
+      // now after the timeoutAt plus the expiry buffer
+      new Date(timeoutAt.valueOf() + 10 * 60 * 1000 + 1000)
     );
 
     // Directly call expireTimedOutTasks instead of polling
@@ -361,7 +361,7 @@ describe('Task', function() {
     // We should advance the fake clock further to catch this one too
     sinon.restore();
     sinon.stub(time, 'now').callsFake(() =>
-      new Date(timeoutAt.valueOf() + 2000)
+      new Date(timeoutAt.valueOf() + 10 * 60 * 1000 + 2000)
     );
 
     await Task.expireTimedOutTasks();
@@ -377,14 +377,82 @@ describe('Task', function() {
     assert.ok(repeated.scheduledAt.valueOf() === repeatTaskObj.scheduledAt.valueOf() + 60000);
   });
 
+  it('does not duplicate a repeating task when timeout expiry races with polling', async function() {
+    const scheduledAt = time.now();
+    const startedRunningAt = new Date(scheduledAt.valueOf() - 20 * 60 * 1000);
+    const timeoutAt = new Date(scheduledAt.valueOf() - 10 * 60 * 1000 - 1000);
+    const repeatAfterMS = 60000;
+    const nextScheduledAt = new Date(scheduledAt.valueOf() + repeatAfterMS);
+
+    const timedOutTask = await Task.create({
+      name: 'dedupeTimedOutRepeat',
+      scheduledAt,
+      startedRunningAt,
+      timeoutAt,
+      status: 'in_progress',
+      repeatAfterMS,
+      params: { foo: 'bar' }
+    });
+
+    await Task.create({
+      name: 'dedupeTimedOutRepeat',
+      scheduledAt: nextScheduledAt,
+      repeatAfterMS,
+      params: { foo: 'bar' },
+      previousTaskId: timedOutTask._id,
+      originalTaskId: timedOutTask._id,
+      status: 'pending',
+      schedulingTimeoutAt: nextScheduledAt.valueOf() + 10 * 60 * 1000
+    });
+
+    await Task.expireTimedOutTasks();
+
+    const repeatedTasks = await Task.find({
+      name: 'dedupeTimedOutRepeat',
+      scheduledAt: nextScheduledAt,
+      previousTaskId: timedOutTask._id
+    });
+    assert.equal(repeatedTasks.length, 1);
+
+    const expiredTask = await Task.findById(timedOutTask._id);
+    assert.equal(expiredTask.status, 'timed_out');
+  });
+
+  it('does not duplicate a repeating task when scheduling timeout is handled twice', async function() {
+    Task.registerHandler('dedupeSchedulingRepeat', async () => {
+      return 'should not be run';
+    });
+
+    const scheduledAt = time.now();
+    const nextScheduledAt = new Date(scheduledAt.valueOf() + 100000);
+    const task = await Task.create({
+      name: 'dedupeSchedulingRepeat',
+      scheduledAt,
+      schedulingTimeoutAt: new Date(scheduledAt.valueOf() - 1000),
+      status: 'pending',
+      params: { foo: 'bar' },
+      nextScheduledAt
+    });
+
+    await Task.execute(task);
+    await Task.execute(task);
+
+    const repeatedTasks = await Task.find({
+      name: 'dedupeSchedulingRepeat',
+      scheduledAt: nextScheduledAt,
+      previousTaskId: task._id
+    });
+    assert.equal(repeatedTasks.length, 1);
+  });
+
   it('creates a retry task when a timed out task has retryOnTimeoutCount', async function() {
     Task.registerHandler('timeoutRetry', async () => {
       // handler intentionally does nothing (we'll simulate a timeout)
     });
 
-    const scheduledAt = new Date(now.valueOf() - 5000);
-    const startedRunningAt = new Date(now.valueOf() - 20000);
-    const timeoutAt = new Date(now.valueOf() - 1000);
+    const scheduledAt = new Date(now.valueOf() - 11 * 60 * 1000);
+    const startedRunningAt = new Date(now.valueOf() - 20 * 60 * 1000);
+    const timeoutAt = new Date(now.valueOf() - 10 * 60 * 1000 - 1000);
 
     let timedOutTask = await Task.create({
       name: 'timeoutRetry',
