@@ -175,7 +175,9 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks(opti
     const task = await Task.findOneAndUpdate(
       {
         status: 'in_progress',
-        timeoutAt: { $exists: true, $lte: now }
+        // If task is still in_progress 10 minutes after it was supposed
+        // to time out, assume the task is stuck and mark it as timed_out
+        timeoutAt: { $exists: true, $lte: now.valueOf() - 10 * 60 * 1000 }
       },
       {
         $set: {
@@ -219,31 +221,35 @@ taskSchema.statics.registerHandler = async function registerHandler(name, fn) {
 };
 
 async function _handleRepeatingTask(Task, task) {
+  let scheduledAt;
   if (task.nextScheduledAt != null) {
-    const scheduledAt = new Date(task.nextScheduledAt);
-    return Task.create({
-      name: task.name,
-      scheduledAt,
-      repeatAfterMS: task.repeatAfterMS,
-      params: task.params,
-      previousTaskId: task._id,
-      originalTaskId: task.originalTaskId || task._id,
-      timeoutMS: task.timeoutMS,
-      schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
-    });
+    scheduledAt = new Date(task.nextScheduledAt);
   } else if (task.repeatAfterMS != null) {
-    const scheduledAt = new Date(task.scheduledAt.valueOf() + task.repeatAfterMS);
-    return Task.create({
+    scheduledAt = new Date(task.scheduledAt.valueOf() + task.repeatAfterMS);
+  } else {
+    return;
+  }
+
+  return Task.updateOne(
+    {
       name: task.name,
       scheduledAt,
-      repeatAfterMS: task.repeatAfterMS,
-      params: task.params,
-      previousTaskId: task._id,
-      originalTaskId: task.originalTaskId || task._id,
-      timeoutMS: task.timeoutMS,
-      schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
-    });
-  }
+      previousTaskId: task._id
+    },
+    {
+      $setOnInsert: {
+        name: task.name,
+        scheduledAt,
+        repeatAfterMS: task.repeatAfterMS,
+        params: task.params,
+        previousTaskId: task._id,
+        originalTaskId: task.originalTaskId || task._id,
+        timeoutMS: task.timeoutMS,
+        schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
+      }
+    },
+    { upsert: true }
+  );
 }
 
 taskSchema.statics.registerHandlers = async function registerHandlers(obj, prefix) {
@@ -337,7 +343,10 @@ taskSchema.statics.execute = async function(task, options = {}) {
           this._handlers.get(task.name).call(task, task.params, task)
         ),
         new Promise((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(`Task timed out after ${task.timeoutMS} ms`)), task.timeoutMS);
+          timeoutId = setTimeout(
+            () => reject(new TimeoutError(`Task timed out after ${task.timeoutMS} ms`)),
+            task.timeoutMS
+          );
         })
       ]).finally(() => clearTimeout(timeoutId));
     } else {
@@ -350,7 +359,7 @@ taskSchema.statics.execute = async function(task, options = {}) {
     task.result = result;
     await task.save();
   } catch (error) {
-    task.status = 'failed';
+    task.status = error instanceof TimeoutError ? 'timed_out' : 'failed';
     task.error.message = error.message;
     task.error.stack = error.stack;
     task.finishedRunningAt = currentTime();
@@ -378,5 +387,12 @@ taskSchema.statics.schedule = async function schedule(name, scheduledAt, params,
     ...options
   });
 };
+
+class TimeoutError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
 
 module.exports = taskSchema;
