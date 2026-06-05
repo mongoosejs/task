@@ -221,35 +221,31 @@ taskSchema.statics.registerHandler = async function registerHandler(name, fn) {
 };
 
 async function _handleRepeatingTask(Task, task) {
-  let scheduledAt;
   if (task.nextScheduledAt != null) {
-    scheduledAt = new Date(task.nextScheduledAt);
-  } else if (task.repeatAfterMS != null) {
-    scheduledAt = new Date(task.scheduledAt.valueOf() + task.repeatAfterMS);
-  } else {
-    return;
-  }
-
-  return Task.updateOne(
-    {
+    const scheduledAt = new Date(task.nextScheduledAt);
+    return Task.create({
       name: task.name,
       scheduledAt,
-      previousTaskId: task._id
-    },
-    {
-      $setOnInsert: {
-        name: task.name,
-        scheduledAt,
-        repeatAfterMS: task.repeatAfterMS,
-        params: task.params,
-        previousTaskId: task._id,
-        originalTaskId: task.originalTaskId || task._id,
-        timeoutMS: task.timeoutMS,
-        schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
-      }
-    },
-    { upsert: true }
-  );
+      repeatAfterMS: task.repeatAfterMS,
+      params: task.params,
+      previousTaskId: task._id,
+      originalTaskId: task.originalTaskId || task._id,
+      timeoutMS: task.timeoutMS,
+      schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
+    });
+  } else if (task.repeatAfterMS != null) {
+    const scheduledAt = new Date(task.scheduledAt.valueOf() + task.repeatAfterMS);
+    return Task.create({
+      name: task.name,
+      scheduledAt,
+      repeatAfterMS: task.repeatAfterMS,
+      params: task.params,
+      previousTaskId: task._id,
+      originalTaskId: task.originalTaskId || task._id,
+      timeoutMS: task.timeoutMS,
+      schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
+    });
+  }
 }
 
 taskSchema.statics.registerHandlers = async function registerHandlers(obj, prefix) {
