@@ -38,15 +38,14 @@ const taskSchema = new mongoose.Schema({
   finishedRunningAt: {
     type: Date
   },
-  retryOnTimeoutCount: {
-    type: Number,
-    default: 0
-  },
   // If this task is still running after this time, it will be marked as `timed_out`.
   timeoutAt: {
     type: Date
   },
   previousTaskId: {
+    type: mongoose.ObjectId
+  },
+  nextTaskId: {
     type: mongoose.ObjectId
   },
   originalTaskId: {
@@ -192,25 +191,7 @@ taskSchema.statics.expireTimedOutTasks = async function expireTimedOutTasks(opti
       break;
     }
 
-    if (task.retryOnTimeoutCount > 0) {
-      // Copy task data but remove _id so MongoDB generates a new one
-      const taskData = task.toObject({ virtuals: false });
-      delete taskData._id;
-      await Task.create({
-        ...taskData,
-        status: 'pending',
-        retryOnTimeoutCount: task.retryOnTimeoutCount - 1,
-        startedRunningAt: null,
-        finishedRunningAt: null,
-        workerName: null,
-        error: null,
-        result: null,
-        timeoutAt: null,
-        schedulingTimeoutAt: now.valueOf() + 10 * 60 * 1000
-      });
-    } else {
-      await _handleRepeatingTask(Task, task);
-    }
+    await _handleRepeatingTask(Task, task);
   }
 };
 
@@ -221,31 +202,38 @@ taskSchema.statics.registerHandler = async function registerHandler(name, fn) {
 };
 
 async function _handleRepeatingTask(Task, task) {
+  let scheduledAt;
   if (task.nextScheduledAt != null) {
-    const scheduledAt = new Date(task.nextScheduledAt);
-    return Task.create({
-      name: task.name,
-      scheduledAt,
-      repeatAfterMS: task.repeatAfterMS,
-      params: task.params,
-      previousTaskId: task._id,
-      originalTaskId: task.originalTaskId || task._id,
-      timeoutMS: task.timeoutMS,
-      schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
-    });
+    scheduledAt = new Date(task.nextScheduledAt);
   } else if (task.repeatAfterMS != null) {
-    const scheduledAt = new Date(task.scheduledAt.valueOf() + task.repeatAfterMS);
-    return Task.create({
-      name: task.name,
-      scheduledAt,
-      repeatAfterMS: task.repeatAfterMS,
-      params: task.params,
-      previousTaskId: task._id,
-      originalTaskId: task.originalTaskId || task._id,
-      timeoutMS: task.timeoutMS,
-      schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
-    });
+    scheduledAt = new Date(task.scheduledAt.valueOf() + task.repeatAfterMS);
+  } else {
+    return;
   }
+
+  const nextTaskId = new mongoose.Types.ObjectId();
+  // Timeout expiry and handler completion may both try to schedule the next task.
+  // Claim the successor on the parent so only one caller can create it.
+  const claimedTask = await Task.findOneAndUpdate(
+    { _id: task._id, nextTaskId: null },
+    { $set: { nextTaskId } },
+    { returnDocument: 'before' }
+  );
+  if (claimedTask == null) {
+    return;
+  }
+
+  return Task.create({
+    _id: nextTaskId,
+    name: task.name,
+    scheduledAt,
+    repeatAfterMS: task.repeatAfterMS,
+    params: task.params,
+    previousTaskId: task._id,
+    originalTaskId: task.originalTaskId || task._id,
+    timeoutMS: task.timeoutMS,
+    schedulingTimeoutAt: scheduledAt.valueOf() + 10 * 60 * 1000
+  });
 }
 
 taskSchema.statics.registerHandlers = async function registerHandlers(obj, prefix) {
