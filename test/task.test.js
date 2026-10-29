@@ -377,51 +377,45 @@ describe('Task', function() {
     assert.ok(repeated.scheduledAt.valueOf() === repeatTaskObj.scheduledAt.valueOf() + 60000);
   });
 
-  it('creates a retry task when a timed out task has retryOnTimeoutCount', async function() {
-    Task.registerHandler('timeoutRetry', async () => {
-      // handler intentionally does nothing (we'll simulate a timeout)
+  it('does not duplicate a repeat when a handler finishes after timeout expiry', async function() {
+    let resolve;
+    let started;
+    const handlerStarted = new Promise(resolve => { started = resolve; });
+    const handlerFinished = new Promise(_resolve => { resolve = _resolve; });
+    Task.registerHandler('lateRepeatingJob', async () => {
+      started();
+      await handlerFinished;
     });
 
-    const scheduledAt = new Date(now.valueOf() - 11 * 60 * 1000);
-    const startedRunningAt = new Date(now.valueOf() - 20 * 60 * 1000);
-    const timeoutAt = new Date(now.valueOf() - 10 * 60 * 1000 - 1000);
-
-    let timedOutTask = await Task.create({
-      name: 'timeoutRetry',
-      scheduledAt,
-      startedRunningAt,
-      timeoutAt,
+    const task = await Task.create({
+      name: 'lateRepeatingJob',
       status: 'in_progress',
-      timeoutMS: 10000,
-      retryOnTimeoutCount: 2,
-      params: { foo: 'bar' }
+      scheduledAt: time.now(),
+      repeatAfterMS: 24 * 60 * 60 * 1000,
+      timeoutAt: new Date(now.valueOf() - 20 * 60 * 1000)
     });
+    const execution = Task.execute(task);
+    await handlerStarted;
+    try {
+      await Task.expireTimedOutTasks();
+      const expiredTask = await Task.findById(task._id);
+      assert.equal(expiredTask.status, 'timed_out');
+    } finally {
+      resolve();
+      await execution;
+    }
 
-    await Task.expireTimedOutTasks();
+    const repeats = await Task.find({ previousTaskId: task._id });
+    assert.equal(repeats.length, 1);
+    const reloadedTask = await Task.findById(task._id);
+    assert.equal(reloadedTask.nextTaskId.toString(), repeats[0]._id.toString());
+    assert.equal(repeats[0].originalTaskId.toString(), task._id.toString());
 
-    timedOutTask = await Task.findById(timedOutTask._id);
-    assert.ok(timedOutTask);
-    assert.equal(timedOutTask.status, 'timed_out');
-    assert.equal(timedOutTask.finishedRunningAt.valueOf(), now.valueOf());
-
-    const retryTask = await Task.findOne({
-      name: 'timeoutRetry',
-      status: 'pending',
-      retryOnTimeoutCount: 1
-    });
-    assert.ok(retryTask, 'Retry task should be created');
-    assert.equal(retryTask.scheduledAt.valueOf(), scheduledAt.valueOf());
-    assert.strictEqual(retryTask.startedRunningAt, null);
-    assert.strictEqual(retryTask.finishedRunningAt, null);
-    assert.strictEqual(retryTask.workerName, null);
-    assert.strictEqual(retryTask.timeoutAt, null);
-    assert.deepStrictEqual(retryTask.toObject().params, { foo: 'bar' });
-    assert.ok(retryTask.error.$isEmpty());
-    assert.strictEqual(retryTask.result, null);
-    assert.equal(
-      retryTask.schedulingTimeoutAt.valueOf(),
-      now.valueOf() + 10 * 60 * 1000
-    );
+    // The successor must be able to schedule its own successor.
+    await Task.execute(repeats[0]);
+    const nextRepeat = await Task.findOne({ previousTaskId: repeats[0]._id });
+    assert.ok(nextRepeat);
+    assert.equal(nextRepeat.originalTaskId.toString(), task._id.toString());
   });
 
   it('handles scheduling_timed_out tasks and schedules next repeat if needed', async function() {
